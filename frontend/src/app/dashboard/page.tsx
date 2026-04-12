@@ -14,6 +14,56 @@ interface Workspace {
   created_at: string;
 }
 
+// ── Delete Modal ───────────────────────────────────────────────────────────
+function DeleteModal({ name, onConfirm, onCancel, deleting }: {
+  name: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+      {/* Modal */}
+      <div className="relative bg-surface border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-fade-up">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-red/10 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-red" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 01-1-1V5a1 1 0 011-1h6a1 1 0 011 1v1a1 1 0 01-1 1H9z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-semibold text-sm text-text">Delete workspace</h2>
+            <p className="text-text3 text-xs mt-1 leading-relaxed">
+              <span className="text-text2 font-medium">"{name}"</span> and all its data, uploaded files, and query history will be permanently deleted. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="flex-1 bg-surface2 hover:bg-surface3 disabled:opacity-50 text-text2 text-sm font-medium py-2 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="flex-1 bg-red/10 hover:bg-red/20 disabled:opacity-50 text-red border border-red/20 text-sm font-medium py-2 rounded-lg transition-colors"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Drop Zone ──────────────────────────────────────────────────────────────
 const ACCEPTED = [".csv", ".xlsx", ".xls"];
 const ACCEPTED_MIME = ["text/csv", "application/vnd.ms-excel",
@@ -153,6 +203,8 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const filtered = workspaces.filter((ws) =>
     ws.name.toLowerCase().includes(search.toLowerCase())
@@ -190,10 +242,16 @@ export default function DashboardPage() {
     await loadWorkspaces();
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this workspace and all its data?")) return;
-    await deleteWorkspace(id);
-    setWorkspaces((ws) => ws.filter((w) => w.id !== id));
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteWorkspace(deleteTarget.id);
+      setWorkspaces((ws) => ws.filter((w) => w.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -290,7 +348,7 @@ export default function DashboardPage() {
                     {ws.description && <p className="text-text3 text-xs mt-0.5">{ws.description}</p>}
                   </div>
                   <button
-                    onClick={() => handleDelete(ws.id)}
+                    onClick={() => setDeleteTarget({ id: ws.id, name: ws.name })}
                     className="opacity-0 group-hover:opacity-100 text-text3 hover:text-red text-xs transition-all"
                   >
                     Delete
@@ -322,6 +380,15 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {deleteTarget && (
+        <DeleteModal
+          name={deleteTarget.name}
+          deleting={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => !deleting && setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

@@ -22,8 +22,8 @@ build/
 *.duckdb
 *.duckdb.wal
 
-# Uploads
-backend/data/uploads/
+# Data directory (DuckDB files, uploads, etc.)
+backend/data/
 
 # Node
 node_modules/

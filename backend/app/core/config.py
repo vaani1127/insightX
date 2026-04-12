@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     algorithm: str = Field(default="HS256")
     access_token_expire_minutes: int = Field(default=1440)  # 24h
 
+    # CORS — set to your frontend domain(s) in production
+    cors_origins: list[str] = Field(default=["http://localhost:3000", "http://127.0.0.1:3000"])
+
     # Anthropic
     anthropic_api_key: str = Field(default="")
     claude_model: str = Field(default="claude-sonnet-4-6")

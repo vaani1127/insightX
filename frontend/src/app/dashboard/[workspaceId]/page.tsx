@@ -222,6 +222,8 @@ function TrustLayer({ trust }: { trust: QueryResponse["trust_layer"] }) {
 
 function ResponseCard({ turn, onFollowUp }: { turn: Turn; onFollowUp: (q: string) => void }) {
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [correction, setCorrection] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const r = turn.result;
 
   if (turn.error) {
@@ -235,10 +237,11 @@ function ResponseCard({ turn, onFollowUp }: { turn: Turn; onFollowUp: (q: string
 
   const { columns, rows } = r.result;
 
-  async function handleFeedback(helpful: boolean) {
-    if (feedback || !r?.query_history_id) return;
+  async function handleFeedback(helpful: boolean, correctionText?: string) {
+    if (submitted || !r?.query_history_id) return;
+    await submitFeedback(r.query_history_id, helpful, correctionText).catch(() => {});
     setFeedback(helpful ? "up" : "down");
-    await submitFeedback(r.query_history_id, helpful).catch(() => {});
+    setSubmitted(true);
   }
 
   return (
@@ -310,10 +313,47 @@ function ResponseCard({ turn, onFollowUp }: { turn: Turn; onFollowUp: (q: string
       )}
 
       {/* Feedback */}
-      <div className="flex items-center gap-2 pt-1">
-        <span className="text-text3 text-xs">Was this helpful?</span>
-        <button onClick={() => handleFeedback(true)} className={`text-sm px-2 py-0.5 rounded transition-colors ${feedback === "up" ? "text-green" : "text-text3 hover:text-green"}`}>👍</button>
-        <button onClick={() => handleFeedback(false)} className={`text-sm px-2 py-0.5 rounded transition-colors ${feedback === "down" ? "text-red" : "text-text3 hover:text-red"}`}>👎</button>
+      <div className="pt-1">
+        {submitted ? (
+          <p className="text-green text-xs">✓ Thanks for your feedback!</p>
+        ) : feedback === "down" ? (
+          <div className="space-y-2 animate-fade-up">
+            <p className="text-text3 text-xs">What was wrong? (optional)</p>
+            <textarea
+              value={correction}
+              onChange={(e) => setCorrection(e.target.value)}
+              placeholder="e.g. The answer ignored the date filter…"
+              rows={2}
+              className="w-full bg-surface2 border border-border rounded-lg px-3 py-2 text-xs text-text placeholder:text-text3 focus:outline-none focus:border-purple/50 resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleFeedback(false, correction)}
+                className="text-xs bg-red/10 hover:bg-red/20 text-red border border-red/20 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Submit
+              </button>
+              <button
+                onClick={() => setFeedback(null)}
+                className="text-xs text-text3 hover:text-text2 px-3 py-1.5 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-text3 text-xs">Was this helpful?</span>
+            <button
+              onClick={() => handleFeedback(true)}
+              className="text-sm px-2 py-0.5 rounded transition-colors text-text3 hover:text-green"
+            >👍</button>
+            <button
+              onClick={() => setFeedback("down")}
+              className="text-sm px-2 py-0.5 rounded transition-colors text-text3 hover:text-red"
+            >👎</button>
+          </div>
+        )}
       </div>
     </div>
   );

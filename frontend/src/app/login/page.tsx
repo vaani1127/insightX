@@ -24,8 +24,8 @@ function LoginForm() {
       const res = mode === "login"
         ? await login(email, password)
         : await signup(email, username, password);
-      const { access_token, user_id, username: uname, email: uemail } = res.data;
-      saveSession(access_token, { user_id, username: uname, email: uemail });
+      const { access_token } = res.data;
+      saveSession(access_token);
       router.push("/dashboard");
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })
@@ -87,7 +87,7 @@ function LoginForm() {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="dhruv"
+                  placeholder="username"
                   minLength={3}
                   className="w-full bg-surface2 border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text3 focus:outline-none focus:border-purple/50 transition-colors"
                 />

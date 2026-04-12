@@ -21,7 +21,7 @@ def signup(payload: SignupRequest) -> AuthResponse:
         "INSERT INTO users (id, email, username, password_hash) VALUES (?, ?, ?, ?)",
         [user_id, payload.email, payload.username, hash_password(payload.password)],
     )
-    token = create_access_token(user_id, payload.email)
+    token = create_access_token(user_id, payload.email, payload.username)
     return AuthResponse(
         access_token=token,
         user_id=user_id,
@@ -38,7 +38,7 @@ def login(payload: LoginRequest) -> AuthResponse:
     if row is None or not verify_password(payload.password, row[2]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    token = create_access_token(row[0], payload.email)
+    token = create_access_token(row[0], payload.email, row[1])
     return AuthResponse(
         access_token=token,
         user_id=row[0],

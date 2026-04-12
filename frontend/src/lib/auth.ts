@@ -1,7 +1,6 @@
 import Cookies from "js-cookie";
 
 const TOKEN_KEY = "insightx_token";
-const USER_KEY = "insightx_user";
 
 export interface StoredUser {
   user_id: string;
@@ -9,11 +8,19 @@ export interface StoredUser {
   email: string;
 }
 
-export function saveSession(token: string, user: StoredUser): void {
-  Cookies.set(TOKEN_KEY, token, { expires: 1, sameSite: "strict" }); // 1 day
-  if (typeof window !== "undefined") {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+function decodeJwt(token: string): StoredUser | null {
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    if (!decoded.sub || !decoded.email || !decoded.username) return null;
+    return { user_id: decoded.sub, email: decoded.email, username: decoded.username };
+  } catch {
+    return null;
   }
+}
+
+export function saveSession(token: string): void {
+  Cookies.set(TOKEN_KEY, token, { expires: 1, sameSite: "strict" });
 }
 
 export function getToken(): string | undefined {
@@ -21,21 +28,13 @@ export function getToken(): string | undefined {
 }
 
 export function getUser(): StoredUser | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(USER_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredUser;
-  } catch {
-    return null;
-  }
+  const token = getToken();
+  if (!token) return null;
+  return decodeJwt(token);
 }
 
 export function clearSession(): void {
   Cookies.remove(TOKEN_KEY);
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(USER_KEY);
-  }
 }
 
 export function isLoggedIn(): boolean {

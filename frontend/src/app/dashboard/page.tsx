@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWorkspace, deleteWorkspace, listWorkspaces, uploadFile } from "@/lib/api";
 import { clearSession, getUser, isLoggedIn, StoredUser } from "@/lib/auth";
@@ -14,6 +14,136 @@ interface Workspace {
   created_at: string;
 }
 
+// ── Drop Zone ──────────────────────────────────────────────────────────────
+const ACCEPTED = [".csv", ".xlsx", ".xls"];
+const ACCEPTED_MIME = ["text/csv", "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+
+function DropZone({ workspaceId, onUpload }: {
+  workspaceId: string;
+  onUpload: (id: string, file: File) => Promise<void>;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
+
+  function validate(file: File): string | null {
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ACCEPTED.includes(ext) && !ACCEPTED_MIME.includes(file.type))
+      return "Only CSV and Excel files (.csv, .xlsx, .xls) are supported.";
+    if (file.size > 50 * 1024 * 1024)
+      return "File must be under 50 MB.";
+    return null;
+  }
+
+  async function handleFile(file: File) {
+    const err = validate(file);
+    if (err) { setError(err); return; }
+    setError(null);
+    setUploading(true);
+    try {
+      await onUpload(workspaceId, file);
+    } catch (e: unknown) {
+      setError(
+        (e as { response?: { data?: { detail?: string } } })
+          ?.response?.data?.detail ?? "Upload failed. Please try again."
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function onDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current++;
+    if (dragCounter.current === 1) setDragging(true);
+  }
+
+  function onDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) setDragging(false);
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  return (
+    <div className="mb-4">
+      <div
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onClick={() => !uploading && inputRef.current?.click()}
+        className={`
+          relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer
+          transition-all duration-200 select-none
+          ${uploading
+            ? "border-purple/40 bg-purple/5 cursor-default"
+            : dragging
+            ? "border-purple bg-purple/10 scale-[1.02]"
+            : error
+            ? "border-red/40 bg-red/5 hover:border-red/60"
+            : "border-border bg-surface2 hover:border-purple/40 hover:bg-purple/5"
+          }
+        `}
+      >
+        {uploading ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-6 h-6 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+            <p className="text-purple text-xs font-medium">Uploading…</p>
+          </div>
+        ) : dragging ? (
+          <div className="flex flex-col items-center gap-2 pointer-events-none">
+            <div className="w-10 h-10 rounded-xl bg-purple/20 flex items-center justify-center text-purple text-xl">↓</div>
+            <p className="text-purple text-xs font-medium">Drop to upload</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${error ? "bg-red/10 text-red" : "bg-surface3 text-text3"}`}>
+              {error ? "!" : "↑"}
+            </div>
+            <div>
+              <p className={`text-xs font-medium ${error ? "text-red" : "text-text2"}`}>
+                {error ?? "Drop your file here"}
+              </p>
+              <p className="text-text3 text-xs mt-0.5">
+                {error ? "Click to try again" : "or click to browse · CSV, XLSX up to 50 MB"}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -23,7 +153,6 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const filtered = workspaces.filter((ws) =>
     ws.name.toLowerCase().includes(search.toLowerCase())
@@ -40,7 +169,7 @@ export default function DashboardPage() {
     try {
       const res = await listWorkspaces();
       setWorkspaces(res.data);
-    } catch {/* handled by interceptor */}
+    } catch { /* handled by interceptor */ }
     finally { setLoading(false); }
   }
 
@@ -57,13 +186,8 @@ export default function DashboardPage() {
   }
 
   async function handleUpload(workspaceId: string, file: File) {
-    setUploadingId(workspaceId);
-    try {
-      await uploadFile(workspaceId, file);
-      await loadWorkspaces();
-    } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Upload failed.");
-    } finally { setUploadingId(null); }
+    await uploadFile(workspaceId, file);
+    await loadWorkspaces();
   }
 
   async function handleDelete(id: string) {
@@ -105,7 +229,7 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Search bar */}
+        {/* Search */}
         {workspaces.length > 0 && (
           <div className="relative mb-6">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text3 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -159,7 +283,8 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filtered.map((ws) => (
               <div key={ws.id} className="bg-surface border border-border rounded-xl p-5 hover:border-purple/30 transition-colors group">
-                <div className="flex items-start justify-between mb-3">
+                {/* Card header */}
+                <div className="flex items-start justify-between mb-4">
                   <div>
                     <h2 className="font-semibold text-sm">{ws.name}</h2>
                     {ws.description && <p className="text-text3 text-xs mt-0.5">{ws.description}</p>}
@@ -172,35 +297,17 @@ export default function DashboardPage() {
                   </button>
                 </div>
 
+                {/* Upload zone or dataset info */}
                 {ws.table_name ? (
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-green inline-block"></span>
-                      <span className="text-green text-xs font-medium">Dataset loaded</span>
+                  <div className="mb-4 bg-green/5 border border-green/20 rounded-xl p-4 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-green/15 flex items-center justify-center text-green text-sm flex-shrink-0">✓</div>
+                    <div>
+                      <p className="text-green text-xs font-medium">Dataset loaded</p>
+                      <p className="text-text3 text-xs mt-0.5">{ws.row_count.toLocaleString()} rows · {ws.columns?.length ?? 0} columns</p>
                     </div>
-                    <p className="text-text3 text-xs">{ws.row_count.toLocaleString()} rows · {ws.columns?.length ?? 0} columns</p>
                   </div>
                 ) : (
-                  <div className="mb-4">
-                    <label className="block w-full cursor-pointer">
-                      <div className="border border-dashed border-border rounded-lg p-3 text-center hover:border-purple/40 transition-colors">
-                        {uploadingId === ws.id ? (
-                          <span className="text-text3 text-xs">Uploading…</span>
-                        ) : (
-                          <span className="text-text3 text-xs">Drop CSV / Excel or click to upload</span>
-                        )}
-                      </div>
-                      <input
-                        type="file"
-                        accept=".csv,.xlsx,.xls"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleUpload(ws.id, file);
-                        }}
-                      />
-                    </label>
-                  </div>
+                  <DropZone workspaceId={ws.id} onUpload={handleUpload} />
                 )}
 
                 <button

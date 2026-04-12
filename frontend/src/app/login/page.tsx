@@ -1,12 +1,15 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { login, signup } from "@/lib/api";
 import { saveSession } from "@/lib/auth";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const params = useSearchParams();
+  const [mode, setMode] = useState<"login" | "signup">(
+    params.get("mode") === "signup" ? "signup" : "login"
+  );
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -121,9 +124,21 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-text3 text-xs mt-4">
-          NatWest Group Hackathon · Talk to Data
+          <button onClick={() => router.push("/")} className="hover:text-text2 transition-colors">
+            ← Back to home
+          </button>
+          <span className="mx-2">·</span>
+          NatWest Group Hackathon
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

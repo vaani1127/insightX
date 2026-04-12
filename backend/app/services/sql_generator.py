@@ -25,6 +25,9 @@ Rules:
 8. If the question asks for a top-N, use ORDER BY + LIMIT.
 9. If the question is genuinely unanswerable from this schema, output exactly: CANNOT_ANSWER
 10. Never use DROP, DELETE, INSERT, UPDATE, CREATE, or any DDL/DML — SELECT only.
+11. If the question asks for a "summary", "overview", "describe", "profile", or "tell me about the data" — generate a dataset profile query: SELECT COUNT(*) as total_records, and COUNT(DISTINCT col) AS unique_{col} for every non-numeric column in the schema.
+12. If the question asks to "show", "display", "preview", or "sample" the data, return SELECT * FROM table LIMIT 10.
+13. Interpret short or terse questions generously using the schema context. "give summary", "summarise", "overview", "what's in here" all mean rule 11. Never return CANNOT_ANSWER for summary/overview/display intents.
 """
 
 
@@ -32,9 +35,51 @@ class SQLGenerationError(Exception):
     pass
 
 
-def _build_schema_block(schema: list[dict], table_name: str) -> str:
+_SUMMARY_PHRASES = {
+    "give summary", "summary", "summarise", "summarize", "give me a summary",
+    "overview", "give overview", "give me an overview", "describe the data",
+    "describe data", "what's in the data", "whats in the data",
+    "tell me about the data", "data overview", "data summary", "profile the data",
+    "profile data", "show summary", "show me a summary",
+}
+
+_SAMPLE_PHRASES = {
+    "show data", "display data", "show me the data", "show me data",
+    "preview", "preview data", "show sample", "sample data", "first rows",
+    "show rows", "show records",
+}
+
+
+def _normalise_question(question: str, schema: list[dict], table_name: str) -> str | None:
+    """
+    Returns a direct SQL string for well-known terse intents, bypassing the LLM.
+    Returns None if the question should go through normal LLM generation.
+    """
+    q = question.strip().lower().rstrip(".")
+
+    if q in _SUMMARY_PHRASES or any(q.startswith(p) for p in _SUMMARY_PHRASES):
+        distinct_parts = ", ".join(
+            f'COUNT(DISTINCT "{c["name"]}") AS "unique_{c["name"]}"'
+            for c in schema
+            if not any(t in c["type"].lower() for t in ("int", "float", "double", "decimal", "bigint", "hugeint"))
+        )
+        if distinct_parts:
+            return f'SELECT COUNT(*) AS total_records, {distinct_parts} FROM "{table_name}"'
+        return f'SELECT COUNT(*) AS total_records FROM "{table_name}"'
+
+    if q in _SAMPLE_PHRASES or any(q.startswith(p) for p in _SAMPLE_PHRASES):
+        safe_cols = ", ".join(f'"{c["name"]}"' for c in schema)
+        return f'SELECT {safe_cols} FROM "{table_name}" LIMIT 10'
+
+    return None
+
+
+def _build_schema_block(schema: list[dict], table_name: str, excluded_columns: list[str] | None = None) -> str:
     cols = "\n".join(f"  {c['name']} ({c['type']})" for c in schema)
-    return f"TABLE: {table_name}\nCOLUMNS:\n{cols}"
+    block = f"TABLE: {table_name}\nCOLUMNS:\n{cols}"
+    if excluded_columns:
+        block += f"\n\nPRIVACY POLICY — NEVER reference these columns under any circumstances: {', '.join(excluded_columns)}"
+    return block
 
 
 def _build_assumption_block(assumptions: list[Assumption]) -> str:
@@ -52,12 +97,18 @@ def generate_sql(
     table_name: str,
     assumptions: list[Assumption],
     conversation_history: list[dict],
+    excluded_columns: list[str] | None = None,
 ) -> str:
     """
     Returns a valid DuckDB SQL SELECT string.
     Raises SQLGenerationError if the question cannot be answered.
     """
-    schema_block = _build_schema_block(schema, table_name)
+    # Fast path: handle terse well-known intents without an LLM call
+    direct_sql = _normalise_question(question, schema, table_name)
+    if direct_sql:
+        return direct_sql
+
+    schema_block = _build_schema_block(schema, table_name, excluded_columns)
     assumption_block = _build_assumption_block(assumptions)
     metric_block = build_metric_context()
 

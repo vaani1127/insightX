@@ -11,7 +11,9 @@ export interface StoredUser {
 
 export function saveSession(token: string, user: StoredUser): void {
   Cookies.set(TOKEN_KEY, token, { expires: 1, sameSite: "strict" }); // 1 day
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  if (typeof window !== "undefined") {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
 }
 
 export function getToken(): string | undefined {
@@ -19,6 +21,7 @@ export function getToken(): string | undefined {
 }
 
 export function getUser(): StoredUser | null {
+  if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
@@ -30,7 +33,9 @@ export function getUser(): StoredUser | null {
 
 export function clearSession(): void {
   Cookies.remove(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(USER_KEY);
+  }
 }
 
 export function isLoggedIn(): boolean {

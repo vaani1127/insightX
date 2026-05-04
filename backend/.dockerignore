@@ -1,0 +1,11 @@
+.env
+.env.*
+data/
+__pycache__/
+*.py[cod]
+*.duckdb
+*.duckdb.wal
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.claude/

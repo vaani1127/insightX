@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="")
     claude_model: str = Field(default="claude-sonnet-4-6")
 
+    # Groq (used as fallback / replacement when Anthropic credits run out)
+    groq_api_key: str = Field(default="")
+    groq_model: str = Field(default="openai/gpt-oss-120b")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

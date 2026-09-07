@@ -1,32 +1,34 @@
 """
-Single Anthropic client used by all services.
+Single Groq client used by all services.
 All LLM calls go through here — one place to swap models, add retries, log tokens.
 """
 
-import anthropic
+from groq import Groq
 
 from app.core.config import settings
 
-_client: anthropic.Anthropic | None = None
+_client: Groq | None = None
 
 
-def get_client() -> anthropic.Anthropic:
+def get_client() -> Groq:
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        _client = Groq(api_key=settings.groq_api_key)
     return _client
 
 
 def chat(system: str, user: str, max_tokens: int = 1024) -> str:
     """Simple single-turn call. Returns the text content."""
     client = get_client()
-    message = client.messages.create(
-        model=settings.claude_model,
+    completion = client.chat.completions.create(
+        model=settings.groq_model,
         max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
     )
-    return message.content[0].text.strip()
+    return completion.choices[0].message.content.strip()
 
 
 def chat_with_history(
@@ -36,10 +38,9 @@ def chat_with_history(
 ) -> str:
     """Multi-turn call. `messages` is a list of {role, content} dicts."""
     client = get_client()
-    message = client.messages.create(
-        model=settings.claude_model,
+    completion = client.chat.completions.create(
+        model=settings.groq_model,
         max_tokens=max_tokens,
-        system=system,
-        messages=messages,
+        messages=[{"role": "system", "content": system}, *messages],
     )
-    return message.content[0].text.strip()
+    return completion.choices[0].message.content.strip()
